@@ -30,7 +30,7 @@ export function ModeSelector({ selected, onChange }: ModeSelectorProps) {
 	return (
 		<Listbox value={selected} onChange={onChange}>
 			<div className="relative">
-				<Listbox.Button className="relative w-48 cursor-pointer rounded-md bg-white dark:bg-gray-700 py-1.5 pl-3 pr-10 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors border border-gray-200 dark:border-gray-600">
+				<Listbox.Button className="relative w-48 cursor-pointer rounded-md bg-gray-100 dark:bg-gray-800 py-1.5 pl-3 pr-10 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700">
 					<span className="flex items-center gap-2">
 						{selectedMode?.icon}
 						<span className="block truncate">{selectedMode?.name}</span>
