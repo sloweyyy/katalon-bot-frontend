@@ -7,8 +7,7 @@ import { ChatModel, ChatMode } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  sendGeminiChatMessage,
-  sendMcpChatMessage,
+  sendChatMessage,
   Message,
   ChatConfig,
   ChatSession,
@@ -99,7 +98,13 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ChatModel>('gemini');
-  const [selectedMode, setSelectedMode] = useState<ChatMode>('mcp');
+  const [selectedMode, setSelectedMode] = useState<ChatMode>(() => {
+    if (typeof window !== 'undefined') {
+      const storedMode = localStorage.getItem('selectedMode');
+      return (storedMode as ChatMode) || 'mcp';
+    }
+    return 'mcp';
+  });
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
@@ -107,6 +112,10 @@ export default function Home() {
   const firstMessageRef = useRef<HTMLDivElement>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('selectedMode', selectedMode);
+  }, [selectedMode]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -129,6 +138,8 @@ export default function Home() {
   const createNewChat = useCallback(async () => {
     if (!userId) return;
 
+    console.log('Creating new chat with mode:', selectedMode);
+
     const newSessionId = uuidv4();
     setCurrentSessionId(newSessionId);
     setMessages([]);
@@ -138,6 +149,8 @@ export default function Home() {
         model: selectedModel,
         mode: selectedMode,
       };
+
+      console.log('New chat config:', config);
 
       await createChatSession(userId, newSessionId, 'New Chat', config);
 
@@ -162,7 +175,10 @@ export default function Home() {
           setCurrentSessionId(mostRecentSession.id);
           setMessages(mostRecentSession.messages);
           setSelectedModel(mostRecentSession.config.model as ChatModel);
-          setSelectedMode(mostRecentSession.config.mode as ChatMode);
+          const storedMode = localStorage.getItem('selectedMode');
+          if (!storedMode) {
+            setSelectedMode(mostRecentSession.config.mode as ChatMode);
+          }
         } else {
           createNewChat();
         }
@@ -207,10 +223,18 @@ export default function Home() {
       try {
         const session = await getChatSession(userId, currentSessionId);
 
+        // Skip if the last message is a config update
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.content === '__config_update__') {
+          return;
+        }
+
         if (
           session.config.model !== selectedModel ||
           session.config.mode !== selectedMode
         ) {
+          console.log('Updating session config to match UI selection');
+
           const updatedSessions = chatSessions.map((s) => {
             if (s.id === currentSessionId) {
               return {
@@ -238,9 +262,7 @@ export default function Home() {
             dummyUpdateMessage,
           );
 
-          setMessages((prev) =>
-            prev.filter((m) => m.content !== '__config_update__'),
-          );
+          setMessages((prev) => [...prev, dummyUpdateMessage]);
         }
       } catch (error) {
         console.error('Failed to update chat config:', error);
@@ -248,14 +270,7 @@ export default function Home() {
     };
 
     updateConfig();
-  }, [
-    selectedModel,
-    selectedMode,
-    userId,
-    currentSessionId,
-    chatSessions,
-    messages,
-  ]);
+  }, [selectedModel, selectedMode]);
 
   const updateChatConfig = async (
     session: ChatSession,
@@ -263,15 +278,30 @@ export default function Home() {
     modeToUse: ChatMode,
   ) => {
     try {
-      const currentSession = await getChatSession(userId, session.id);
+      console.log('updateChatConfig called with:', {
+        sessionId: session.id,
+        modelToUse,
+        modeToUse,
+      });
 
+      const currentSession = await getChatSession(userId, session.id);
+      console.log('Current session config:', currentSession.config);
+
+      // Don't update if the config is already correct
       if (
         currentSession.config.model === modelToUse &&
         currentSession.config.mode === modeToUse
       ) {
+        console.log('Config already matches, no update needed');
         return;
       }
 
+      console.log('Updating session config to:', {
+        model: modelToUse,
+        mode: modeToUse,
+      });
+
+      // Update the sessions list in state
       const updatedSessions = chatSessions.map((s) => {
         if (s.id === session.id) {
           return {
@@ -286,11 +316,14 @@ export default function Home() {
       });
       setChatSessions(updatedSessions);
 
+      // Only update the UI state if this is the current session
       if (session.id === currentSessionId) {
+        console.log('This is the current session, updating UI state');
         setSelectedModel(modelToUse);
         setSelectedMode(modeToUse);
       }
 
+      // Add a dummy message to trigger a save
       const configUpdateMessage: Message = {
         content: '__config_update__',
         isUser: false,
@@ -299,6 +332,7 @@ export default function Home() {
       };
 
       await addMessageToChatSession(userId, session.id, configUpdateMessage);
+      console.log('Config update saved to backend');
     } catch (error) {
       console.error('Failed to update chat config:', error);
     }
@@ -327,16 +361,16 @@ export default function Home() {
         return;
       }
 
+      // Keep the current mode and model selections
       const currentModel = selectedModel;
       const currentMode = selectedMode;
 
       const session = await getChatSession(userId, sessionId);
+
       setCurrentSessionId(sessionId);
       setMessages(session.messages);
 
-      setSelectedModel(session.config.model as ChatModel);
-      setSelectedMode(session.config.mode as ChatMode);
-
+      // Update the session config to match the user's current selections
       if (
         session.config.model !== currentModel ||
         session.config.mode !== currentMode
@@ -359,8 +393,6 @@ export default function Home() {
           );
           setCurrentSessionId(updatedSessions[0].id);
           setMessages(firstSession.messages);
-          setSelectedModel(firstSession.config.model as ChatModel);
-          setSelectedMode(firstSession.config.mode as ChatMode);
         } catch {
           createNewChat();
         }
@@ -418,14 +450,17 @@ export default function Home() {
           });
       }
 
-      const sendMessage =
-        selectedMode === 'gemini' ? sendGeminiChatMessage : sendMcpChatMessage;
-      const res = await sendMessage({
-        sessionId: currentSessionId,
-        message,
-        systemInstruction: SYSTEM_INSTRUCTION,
-        history: getChatHistory(messages),
-      });
+      console.log(`Selected mode: ${selectedMode}`);
+
+      const res = await sendChatMessage(
+        {
+          sessionId: currentSessionId,
+          message,
+          systemInstruction: SYSTEM_INSTRUCTION,
+          history: getChatHistory(messages),
+        },
+        selectedMode,
+      );
 
       const botResponse: Message = {
         content: res.answer,

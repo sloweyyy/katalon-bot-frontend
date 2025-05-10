@@ -63,8 +63,17 @@ export async function sendMcpChatMessage(
   return res.json();
 }
 
-export async function sendChatMessage(req: ChatRequest): Promise<ChatResponse> {
-  return sendMcpChatMessage(req);
+export async function sendChatMessage(
+  req: ChatRequest,
+  mode: string = 'mcp',
+): Promise<ChatResponse> {
+  if (mode === 'gemini') {
+    console.log('Using Gemini API');
+    return sendGeminiChatMessage(req);
+  } else {
+    console.log('Using MCP API');
+    return sendMcpChatMessage(req);
+  }
 }
 
 export async function getChatSessions(userId: string): Promise<ChatSession[]> {
@@ -167,4 +176,21 @@ export async function generateTitle(
   if (!res.ok) throw new Error('Failed to generate title');
   const data = await res.json();
   return data.title;
+}
+
+export async function updateChatSessionConfig(
+  userId: string,
+  sessionId: string,
+  config: ChatConfig,
+): Promise<ChatSession> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_BACKEND_URL}/chat-history/sessions/${sessionId}/config`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, config }),
+    },
+  );
+  if (!res.ok) throw new Error('Failed to update chat session config');
+  return res.json();
 }
