@@ -50,7 +50,7 @@ src/
    ```
 3. Create a `.env.local` file in the root directory with the following variables:
    ```
-   NEXT_PUBLIC_BACKEND_URL=http://localhost:3000
+   NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
    ```
 
 ### Running the Application
